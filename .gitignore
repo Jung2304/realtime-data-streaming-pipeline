@@ -1,0 +1,12 @@
+# Environment
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# Airflow
+airflow/logs/
+airflow/config/simple_auth_manager_passwords.json.generated
+
+# Spark
+spark-events/
