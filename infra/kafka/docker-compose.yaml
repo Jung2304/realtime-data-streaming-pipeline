@@ -1,0 +1,128 @@
+# Kafka KRaft cluster (3 combined broker/controller nodes), Schema Registry, Control Center
+x-kafka-env: &kafka-env
+  # KRaft: each node is a broker and controller
+  KAFKA_PROCESS_ROLES: "broker,controller"
+  KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:29093,2@kafka-2:29093,3@kafka-3:29093"
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+  # Listeners
+  KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092"
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+  KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+  # Replication and fault tolerance
+  KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+  KAFKA_MIN_INSYNC_REPLICAS: 2
+
+  KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+  # Storage
+  KAFKA_LOG_DIRS: /var/lib/kafka/data
+  CLUSTER_ID: ${KAFKA_CLUSTER_ID:?required}
+
+services:
+  kafka-1:
+    image: confluentinc/cp-kafka:8.4.0
+    hostname: kafka-1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9094:9092"
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 1
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-1:29092,PLAINTEXT_HOST://localhost:9094"
+    volumes:
+      - kafka_1_data:/var/lib/kafka/data
+
+  kafka-2:
+    image: confluentinc/cp-kafka:8.4.0
+    hostname: kafka-2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9095:9092"
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 2
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-2:29092,PLAINTEXT_HOST://localhost:9095"
+    volumes:
+      - kafka_2_data:/var/lib/kafka/data
+
+  kafka-3:
+    image: confluentinc/cp-kafka:8.4.0
+    hostname: kafka-3
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9096:9092"
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 3
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-3:29092,PLAINTEXT_HOST://localhost:9096"
+    volumes:
+      - kafka_3_data:/var/lib/kafka/data
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:8.4.0
+    hostname: schema-registry
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:8094:8081"
+
+    depends_on:
+      - kafka-1
+      - kafka-2
+      - kafka-3
+
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8081"
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "PLAINTEXT://kafka-1:29092,kafka-2:29092,kafka-3:29092"
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC: "_schemas"
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: 3
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/subjects > /dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  control-center:
+    image: confluentinc/cp-enterprise-control-center-next-gen:2.7.0
+    hostname: control-center
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:9021:9021"
+
+    depends_on:
+      - kafka-1
+      - kafka-2
+      - kafka-3
+      - schema-registry
+
+    environment:
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
+      CONTROL_CENTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      CONTROL_CENTER_MODE_ENABLE: "management"
+      CONTROL_CENTER_PROMETHEUS_ENABLE: "false"
+      CONTROL_CENTER_REPLICATION_FACTOR: 3
+      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
+      PORT: 9021
+      
+    volumes:
+      - control_center_data:/var/lib/confluent-control-center
+    ulimits:
+      nofile:
+        soft: 16384
+        hard: 16384
+
+volumes:
+  kafka_1_data:
+  kafka_2_data:
+  kafka_3_data:
+  control_center_data:

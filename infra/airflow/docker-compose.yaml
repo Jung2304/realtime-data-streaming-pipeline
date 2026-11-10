@@ -1,0 +1,117 @@
+# Airflow + its metadata PostgreSQL database
+x-airflow-common: &airflow-common
+  image: realtime-streaming-airflow:3.0.0
+  pull_policy: never
+
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+
+    AIRFLOW_CONN_SPARK_DEFAULT: '{"conn_type":"spark","host":"spark://spark-master","port":7077}'
+
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Ho_Chi_Minh
+
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-api-server:8080/execution/
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?required}
+
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: admin:admin
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/config/simple_auth_manager_passwords.json.generated
+
+    PYSPARK_PYTHON: python3.12
+    PYSPARK_DRIVER_PYTHON: python3.12
+    PYTHONPATH: "/opt/airflow/project:/opt/airflow/project/spark"
+
+    KAFKA_BOOTSTRAP_SERVERS: "kafka-1:29092,kafka-2:29092,kafka-3:29092"
+    SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+    KAFKA_TOPIC: "randomuser_events_v2"
+
+    CASSANDRA_HOST: "cassandra"
+    CASSANDRA_PORT: "9042"
+    CASSANDRA_LOCAL_DC: "datacenter1"
+    SPARK_CHECKPOINT_DIR: "/opt/airflow/project/checkpoints/randomuser_v2_cassandra"
+
+  volumes:
+    - ../../airflow/dags:/opt/airflow/dags
+    - ../../airflow/logs:/opt/airflow/logs
+    - ../../airflow/plugins:/opt/airflow/plugins
+    - ../../airflow/config:/opt/airflow/config
+    - ../../spark:/opt/airflow/project/spark:ro
+    - ../../jobs:/opt/airflow/project/jobs:ro
+    - ../../schemas:/opt/airflow/project/schemas:ro
+    - spark_checkpoints:/opt/airflow/project/checkpoints
+
+  user: "50000:0"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+      
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      retries: 5
+    restart: unless-stopped
+
+  airflow-init:
+    <<: *airflow-common
+    command: db migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  airflow-api-server:
+    <<: *airflow-common
+    command: api-server
+    ports:
+      - "127.0.0.1:8091:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      checkpoints-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  checkpoints-init:
+    image: alpine:3.20
+    user: "0:0"
+    volumes:
+      - spark_checkpoints:/checkpoints
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /checkpoints/randomuser_v2_cassandra
+        chown -R 50000:0 /checkpoints
+        chmod -R 775 /checkpoints
+    restart: "no"
+
+volumes:
+  postgres_data:
+  spark_checkpoints:

@@ -1,0 +1,47 @@
+# Spark Standalone cluster
+services:
+
+  spark-master:
+    image: twibot22-spark:3.5.3
+    pull_policy: never
+    command:
+      - /opt/spark/bin/spark-class
+      - org.apache.spark.deploy.master.Master
+      - --host
+      - spark-master
+      - --port
+      - "7077"
+      - --webui-port
+      - "8080"
+    ports:
+      - "127.0.0.1:8092:8080"
+    restart: unless-stopped
+
+  spark-worker:
+    image: twibot22-spark:3.5.3
+    pull_policy: never
+    command:
+      - /opt/spark/bin/spark-class
+      - org.apache.spark.deploy.worker.Worker
+      - --cores
+      - "2"
+      - --memory
+      - 2G
+      - --work-dir
+      - /tmp/spark-worker
+      - --webui-port
+      - "8081"
+      - spark://spark-master:7077
+    depends_on:
+      - spark-master
+    ports:
+      - "127.0.0.1:8093:8081"
+    environment:
+      PYSPARK_PYTHON: python3.12
+      PYTHONPATH: "/opt/airflow/project:/opt/airflow/project/spark"
+    volumes:
+      - ../../spark:/opt/airflow/project/spark:ro
+      - ../../jobs:/opt/airflow/project/jobs:ro
+      - ../../schemas:/opt/airflow/project/schemas:ro
+      - spark_checkpoints:/opt/airflow/project/checkpoints
+    restart: unless-stopped

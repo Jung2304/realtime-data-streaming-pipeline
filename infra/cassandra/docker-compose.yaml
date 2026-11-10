@@ -1,0 +1,28 @@
+# Cassandra database
+services:
+  cassandra:
+    image: cassandra:5.0.9
+    hostname: cassandra
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:9042:9042"
+
+    environment:
+      CASSANDRA_CLUSTER_NAME: realtime-streaming
+      MAX_HEAP_SIZE: 1G
+
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+      
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "cqlsh 127.0.0.1 9042 -e 'DESCRIBE KEYSPACES' > /dev/null 2>&1"
+      interval: 20s
+      timeout: 15s
+      retries: 15
+      start_period: 90s
+
+volumes:
+  cassandra_data:
