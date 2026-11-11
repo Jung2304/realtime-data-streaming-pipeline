@@ -18,18 +18,7 @@ An end-to-end, Dockerized data engineering pipeline that ingests synthetic user 
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    API[Random User API] --> P[Kafka Producer]
-    P --> K[Kafka KRaft Cluster]
-    SR[Schema Registry] -.-> P
-    K --> S[Spark Structured Streaming]
-    S --> DQ{Data Quality}
-    DQ -->|Valid| C[(Cassandra)]
-    DQ -->|Invalid| L[DQ Logs]
-    A[Airflow Orchestration] -.-> P
-    A -.-> S
-```
+<img width="1672" height="941" alt="image" src="https://github.com/user-attachments/assets/12899819-4438-44be-85f6-958627c420cc" />
 
 ### Pipeline Workflow
 
