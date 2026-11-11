@@ -98,6 +98,24 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  airflow-triggerer:
+    <<: *airflow-common
+    command: triggerer
+    restart: unless-stopped
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   checkpoints-init:
     image: alpine:3.20
     user: "0:0"
